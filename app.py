@@ -29,10 +29,15 @@ def load_data():
 # Load data
 qgenda_data, mbms_data = load_data()
 
-# Normalize provider names for consistency
+# Improved name normalization function
 def normalize_name(name):
-    # Remove titles like 'Md', 'Do', and extra spaces
-    return re.sub(r'(Md|Do|,|\.)', '', name).strip()
+    # Remove titles like 'Md', 'Do', ',', '.' and extra spaces
+    name = re.sub(r'(Md|Do|,|\.)', '', name).strip()
+    # Standardize spaces and order of first and last names
+    name_parts = name.split()
+    name_parts.sort()
+    normalized = ' '.join(name_parts)
+    return normalized
 
 mbms_data['Normalized Name'] = mbms_data['DR NAME'].apply(normalize_name)
 qgenda_data['Normalized Name'] = qgenda_data['Provider'].apply(normalize_name)
