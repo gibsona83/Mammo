@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
+import re
 
 # Set up the Streamlit page layout with a modern look
 st.set_page_config(page_title='Dr. Gor - Provider-Level Reporting', layout='wide', page_icon='📊')
@@ -28,19 +29,27 @@ def load_data():
 # Load data
 qgenda_data, mbms_data = load_data()
 
+# Normalize provider names for consistency
+def normalize_name(name):
+    # Remove titles like 'Md', 'Do', and extra spaces
+    return re.sub(r'(Md|Do|,|\.)', '', name).strip()
+
+mbms_data['Normalized Name'] = mbms_data['DR NAME'].apply(normalize_name)
+qgenda_data['Normalized Name'] = qgenda_data['Provider'].apply(normalize_name)
+
 # Calculate total wRVU and wRVUs per half day per provider
-provider_summary = mbms_data.groupby('DR NAME').agg(
+provider_summary = mbms_data.groupby('Normalized Name').agg(
     total_wRVU=('WORK RVU', 'sum'),
     total_procedures=('CODE', 'count')
 ).reset_index()
 
 # Calculate half-day mammography shifts per provider
-half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].groupby('Provider').agg(
+half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].groupby('Normalized Name').agg(
     half_day_count=('Corrected Shifts', 'sum')
 ).reset_index()
 
 # Merge shift data into the provider summary
-provider_summary = pd.merge(provider_summary, half_day_shifts, left_on='DR NAME', right_on='Provider', how='left')
+provider_summary = pd.merge(provider_summary, half_day_shifts, on='Normalized Name', how='left')
 
 # Fill NaN values for half_day_count with 0
 provider_summary['half_day_count'].fillna(0, inplace=True)
@@ -57,9 +66,9 @@ st.markdown("### Provider-Level Summary")
 st.dataframe(provider_summary)
 
 st.markdown("### Bar Chart: Total wRVU per Provider")
-fig = px.bar(provider_summary, x='DR NAME', y='total_wRVU', title='Total wRVU per Provider')
+fig = px.bar(provider_summary, x='Normalized Name', y='total_wRVU', title='Total wRVU per Provider')
 st.plotly_chart(fig)
 
 st.markdown("### Bar Chart: wRVUs per Half Day per Provider")
-fig2 = px.bar(provider_summary, x='DR NAME', y='wRVUs_per_half_day', title='wRVUs per Half Day per Provider')
+fig2 = px.bar(provider_summary, x='Normalized Name', y='wRVUs_per_half_day', title='wRVUs per Half Day per Provider')
 st.plotly_chart(fig2)
