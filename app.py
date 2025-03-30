@@ -41,7 +41,16 @@ half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_
 
 # Merge shift data into the provider summary
 provider_summary = pd.merge(provider_summary, half_day_shifts, left_on='DR NAME', right_on='Provider', how='left')
-provider_summary['wRVUs_per_half_day'] = provider_summary['total_wRVU'] / provider_summary['half_day_count']
+
+# Fill NaN values for half_day_count with 0
+provider_summary['half_day_count'].fillna(0, inplace=True)
+
+# Avoid division by zero for wRVUs per half day calculation
+provider_summary['wRVUs_per_half_day'] = np.where(
+    provider_summary['half_day_count'] > 0,
+    provider_summary['total_wRVU'] / provider_summary['half_day_count'],
+    np.nan
+)
 
 # Display provider-level metrics
 st.markdown("### Provider-Level Summary")
