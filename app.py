@@ -1,4 +1,4 @@
-# Streamlit Dashboard for Dr. Gor - Ad-Hoc Reporting
+# Streamlit Dashboard for Dr. Gor - Provider-Level Reporting
 # Author: ChatGPT
 
 import streamlit as st
@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 
 # Set up the Streamlit page layout with a modern look
-st.set_page_config(page_title='Dr. Gor - Ad-Hoc Reporting', layout='wide', page_icon='📊')
+st.set_page_config(page_title='Dr. Gor - Provider-Level Reporting', layout='wide', page_icon='📊')
 
 st.markdown("<style>body {background-color: #f4f4f4; font-family: Arial, sans-serif;} .metric {font-size: 1.5em;}</style>", unsafe_allow_html=True)
 
-st.title("🌟 Dr. Gor's Radiology Ad-Hoc Reporting Dashboard")
-st.markdown("## Executive Summary and KPI Metrics")
+st.title("🌟 Dr. Gor's Radiology Provider-Level Reporting Dashboard")
+st.markdown("## Provider-Level Metrics: Total wRVU and wRVUs per Half Day")
 
 # Placeholder for loading data
 @st.cache_data
@@ -28,38 +28,27 @@ def load_data():
 # Load data
 qgenda_data, mbms_data = load_data()
 
-# Sidebar filters
-st.sidebar.header("Filter Options")
-provider_list = qgenda_data['Provider'].unique()
-selected_provider = st.sidebar.selectbox("Select Provider", ['All'] + list(provider_list))
-date_range = st.sidebar.date_input("Select Date Range", [])
+# Calculate total wRVU and wRVUs per half day per provider
+provider_summary = mbms_data.groupby('DR NAME').agg(
+    total_wRVU=('WORK RVU', 'sum'),
+    total_procedures=('ACCESS#', 'count')
+).reset_index()
 
-# Calculate half-day mammography shifts
-half_day_mammo_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].shape[0]
+# Calculate half-day mammography shifts per provider
+half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].groupby('Provider').size().reset_index(name='half_day_count')
 
-# KPI Metrics
-total_wRVU = mbms_data['WORK RVU'].sum()
-total_procedures = len(mbms_data)
-avg_wRVU_per_half_day = total_wRVU / half_day_mammo_shifts
+# Merge shift data into the provider summary
+provider_summary = pd.merge(provider_summary, half_day_shifts, left_on='DR NAME', right_on='Provider', how='left')
+provider_summary['wRVUs_per_half_day'] = provider_summary['total_wRVU'] / provider_summary['half_day_count']
 
-st.markdown("### Key Performance Indicators (KPIs)")
-col1, col2, col3 = st.columns(3)
-col1.metric("🔍 Total wRVU", f"{total_wRVU:.2f}")
-col2.metric("📝 Total Procedures", f"{total_procedures}")
-col3.metric("📊 Avg wRVU per Half Day", f"{avg_wRVU_per_half_day:.2f}")
+# Display provider-level metrics
+st.markdown("### Provider-Level Summary")
+st.dataframe(provider_summary)
 
-st.markdown("## Detailed Task and Procedure Breakdown")
-if selected_provider != 'All':
-    filtered_qgenda = qgenda_data[qgenda_data['Provider'] == selected_provider]
-else:
-    filtered_qgenda = qgenda_data
+st.markdown("### Bar Chart: Total wRVU per Provider")
+fig = px.bar(provider_summary, x='DR NAME', y='total_wRVU', title='Total wRVU per Provider')
+st.plotly_chart(fig)
 
-if date_range:
-    filtered_qgenda = filtered_qgenda[filtered_qgenda['Date'].between(date_range[0], date_range[-1])]
-
-st.write("### Provider Tasks from QGenda")
-st.dataframe(filtered_qgenda)
-
-st.write("### Studies Read (From MBMS Data)")
-filtered_mbms = mbms_data[mbms_data['DR NAME'].isin(filtered_qgenda['Provider'].unique())]
-st.dataframe(filtered_mbms)
+st.markdown("### Bar Chart: wRVUs per Half Day per Provider")
+fig2 = px.bar(provider_summary, x='DR NAME', y='wRVUs_per_half_day', title='wRVUs per Half Day per Provider')
+st.plotly_chart(fig2)
