@@ -33,14 +33,15 @@ qgenda_data, mbms_data = load_data()
 def normalize_name(name):
     # Remove titles like 'Md', 'Do', ',', '.' and extra spaces
     name = re.sub(r'(Md|Do|,|\.)', '', name).strip()
-    # Standardize spaces and order of first and last names
-    name_parts = name.split()
-    name_parts.sort()
-    normalized = ' '.join(name_parts)
-    return normalized
+    # Remove multiple spaces
+    name = re.sub(r'\s+', ' ', name)
+    return name
 
 mbms_data['Normalized Name'] = mbms_data['DR NAME'].apply(normalize_name)
 qgenda_data['Normalized Name'] = qgenda_data['Provider'].apply(normalize_name)
+
+# Adjust shift counts: Split full days into two half days
+qgenda_data['Adjusted Shifts'] = np.where(qgenda_data['Shift Length'] == 'Full', 2 * qgenda_data['Corrected Shifts'], qgenda_data['Corrected Shifts'])
 
 # Calculate total wRVU and wRVUs per half day per provider
 provider_summary = mbms_data.groupby('Normalized Name').agg(
@@ -49,8 +50,8 @@ provider_summary = mbms_data.groupby('Normalized Name').agg(
 ).reset_index()
 
 # Calculate half-day mammography shifts per provider
-half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].groupby('Normalized Name').agg(
-    half_day_count=('Corrected Shifts', 'sum')
+half_day_shifts = qgenda_data[qgenda_data['Shift Type'] == 'Mammo'].groupby('Normalized Name').agg(
+    half_day_count=('Adjusted Shifts', 'sum')
 ).reset_index()
 
 # Merge shift data into the provider summary
