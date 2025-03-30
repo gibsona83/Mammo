@@ -58,8 +58,8 @@ if date_range:
     filtered_qgenda = filtered_qgenda[filtered_qgenda['Date'].between(date_range[0], date_range[-1])]
 
 st.write("### Provider Tasks from QGenda")
-st.dataframe(filtered_qgenda.style.set_precision(2))
+st.dataframe(filtered_qgenda)
 
 st.write("### Studies Read (From MBMS Data)")
 filtered_mbms = mbms_data[mbms_data['DR NAME'].isin(filtered_qgenda['Provider'].unique())]
-st.dataframe(filtered_mbms.style.set_precision(2))
+st.dataframe(filtered_mbms)
