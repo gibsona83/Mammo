@@ -28,13 +28,29 @@ def load_data():
 # Load data
 qgenda_data, mbms_data = load_data()
 
-# Inspect columns to find the correct provider field
-st.write("MBMS Data Columns:", mbms_data.columns)
-st.write("QGenda Data Columns:", qgenda_data.columns)
+# Calculate total wRVU and wRVUs per half day per provider
+provider_summary = mbms_data.groupby('DR NAME').agg(
+    total_wRVU=('WORK RVU', 'sum'),
+    total_procedures=('CODE', 'count')
+).reset_index()
 
-# Temporary display to help identify the correct provider column
-st.write("### Sample MBMS Data")
-st.dataframe(mbms_data.head())
+# Calculate half-day mammography shifts per provider
+half_day_shifts = qgenda_data[(qgenda_data['Shift Length'] == 'Half') & (qgenda_data['Shift Type'] == 'Mammo')].groupby('Provider').agg(
+    half_day_count=('Corrected Shifts', 'sum')
+).reset_index()
 
-st.write("### Sample QGenda Data")
-st.dataframe(qgenda_data.head())
+# Merge shift data into the provider summary
+provider_summary = pd.merge(provider_summary, half_day_shifts, left_on='DR NAME', right_on='Provider', how='left')
+provider_summary['wRVUs_per_half_day'] = provider_summary['total_wRVU'] / provider_summary['half_day_count']
+
+# Display provider-level metrics
+st.markdown("### Provider-Level Summary")
+st.dataframe(provider_summary)
+
+st.markdown("### Bar Chart: Total wRVU per Provider")
+fig = px.bar(provider_summary, x='DR NAME', y='total_wRVU', title='Total wRVU per Provider')
+st.plotly_chart(fig)
+
+st.markdown("### Bar Chart: wRVUs per Half Day per Provider")
+fig2 = px.bar(provider_summary, x='DR NAME', y='wRVUs_per_half_day', title='wRVUs per Half Day per Provider')
+st.plotly_chart(fig2)
