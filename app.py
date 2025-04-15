@@ -1,142 +1,137 @@
 import streamlit as st
 import pandas as pd
-import os
+import plotly.express as px
+import plotly.graph_objects as go
 from pathlib import Path
 
-# Inject custom CSS for color scheme alignment
-st.markdown("""
-<style>
-    body {
-        background-color: #1C2526;
-        color: #FFFFFF;
-    }
-    .stApp {
-        background-color: #1C2526;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        color: #FFFFFF;
-        font-family: 'Arial', sans-serif;
-    }
-    .stMarkdown p {
-        color: #D3D3D3;
-    }
-    .stDataFrame div {
-        background-color: #2B4A5D;
-        color: #FFFFFF;
-        border: 1px solid #FFFFFF;
-    }
-    .stDataFrame div:hover {
-        background-color: #3A5F73;
-    }
-    /* Style for the divider */
-    hr {
-        border-top: 1px solid #FFFFFF;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Streamlit page config
+st.set_page_config(page_title="CY24 Mammography Dashboard", layout="wide")
 
-# Cache data loading to prevent repeated file reads
+# Title
+st.title("CY24 Mammography Performance Dashboard")
+
+# Load data
 @st.cache_data
-def load_data(file_path):
-    try:
-        xls = pd.ExcelFile(file_path)
-        return pd.read_excel(xls, sheet_name='HD Conversions'), pd.read_excel(xls, sheet_name='Data')
-    except FileNotFoundError:
-        st.error("CY24 Mammo.xlsx not found in the main repository folder.")
-        st.stop()
+def load_data():
+    # Assuming the Excel file is in the repo root
+    file_path = "CY24 Mammo.xlsx"
+    xl = pd.ExcelFile(file_path)
+    
+    # Load relevant sheets
+    by_rad = xl.parse("CY 2024 OVERALL - BY RAD")
+    case_mix = xl.parse("CY24 OVERALL CASE MIX")
+    by_seat = xl.parse("CY 2024 OVERALL - BY SEAT")
+    
+    return by_rad, case_mix, by_seat
 
-# Cache data processing to avoid redundant computations
-@st.cache_data
-def process_data(hd_df, data_df):
-    # Extract Benchmark Table
-    seat_section = hd_df.iloc[1:7, [4, 5]].dropna().copy()
-    seat_section.columns = ['SEAT', 'Seat_Norm_HD_Avg']
-    seat_section['Benchmark'] = seat_section['Seat_Norm_HD_Avg'] * 1.25
+by_rad, case_mix, by_seat = load_data()
 
-    # Extract Radiologist Normalized HD Averages
-    rad_section = hd_df.iloc[1:12, [0, 1]].dropna().copy()
-    rad_section.columns = ['RAD', 'Norm_HD_Avg']
+# Sidebar filters
+st.sidebar.header("Filters")
+selected_rad = st.sidebar.multiselect("Select Radiologist(s)", options=by_rad["RAD"].unique(), default=by_rad["RAD"].unique())
+selected_seat = st.sidebar.multiselect("Select Location(s)", options=by_seat["SEAT"].unique(), default=by_seat["SEAT"].unique())
 
-    # Extract Per-Seat Radiologist Performance (optimized loop)
-    seat_rads = []
-    seat_names = seat_section['SEAT'].to_numpy()  # Use numpy for faster iteration
-    for seat in seat_names:
-        seat_idx = hd_df[hd_df.iloc[:, 0] == seat].index
-        if not seat_idx.empty:
-            start_idx = seat_idx[0]
-            for i in range(1, 10):
-                row = hd_df.iloc[start_idx + i, 0:2]
-                if row.notna().all():
-                    seat_rads.append([row[0], seat, row[1]])
-                else:
-                    break
-    seat_rad_df = pd.DataFrame(seat_rads, columns=['RAD', 'SEAT', 'Norm_HD_Avg'])
+# Filter data
+filtered_rad = by_rad[by_rad["RAD"].isin(selected_rad)]
+filtered_seat = by_seat[by_seat["SEAT"].isin(selected_seat)]
 
-    # Merge with Benchmarks
-    seat_rad_df = seat_rad_df.merge(seat_section, on='SEAT', how='left')
-    seat_rad_df['SAPI_Unweighted'] = seat_rad_df['Norm_HD_Avg'] / seat_rad_df['Benchmark'] * 100
+# Tabs for different views
+tab1, tab2, tab3 = st.tabs(["Radiologist Performance", "Location Analysis", "Case Mix"])
 
-    # Shift Counts for Weighted SAPI
-    shifts = data_df.groupby(['Finalizing Provider', 'Location']).size().reset_index(name='Shifts')
-    shifts.columns = ['RAD', 'SEAT', 'Shifts']
-    seat_rad_df = seat_rad_df.merge(shifts, on=['RAD', 'SEAT'], how='left').fillna({'Shifts': 1})
+with tab1:
+    st.header("Radiologist Performance")
+    
+    # Bar chart for Normalized HD Avg
+    fig1 = px.bar(
+        filtered_rad,
+        x="RAD",
+        y="Normalized HD Avg",
+        title="Normalized HD Average by Radiologist",
+        color="RAD",
+        labels={"Normalized HD Avg": "Normalized HD Avg (wRVU)"},
+    )
+    fig1.update_layout(showlegend=False)
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    # Display raw data
+    st.subheader("Raw Data")
+    st.dataframe(filtered_rad[["RAD", "FULL", "AVG FULL", "HALF", "AVG HALF", "Normalized HD Avg"]])
 
-    # Weighted SAPI Calculation
-    weighted = seat_rad_df.copy()
-    weighted['Weighted_SAPI'] = weighted['SAPI_Unweighted'] * weighted['Shifts']
-    weighted_summary = weighted.groupby('RAD').agg({
-        'Weighted_SAPI': 'sum',
-        'Shifts': 'sum'
-    }).reset_index()
-    weighted_summary['SAPI_Weighted'] = weighted_summary['Weighted_SAPI'] / weighted_summary['Shifts']
+with tab2:
+    st.header("Location Analysis")
+    
+    # Bar chart for Normalized HD Avg by seat
+    fig2 = px.bar(
+        filtered_seat,
+        x="SEAT",
+        y="Normalized HD Avg",
+        title="Normalized HD Average by Location",
+        color="SEAT",
+        labels={"Normalized HD Avg": "Normalized HD Avg (wRVU)"},
+    )
+    fig2.update_layout(showlegend=False)
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    # Display raw data
+    st.subheader("Raw Data")
+    st.dataframe(filtered_seat[["SEAT", "FULL", "AVG FULL", "HALF", "AVG HALF", "Normalized HD Avg"]])
 
-    # Combine Unweighted SAPI
-    unweighted_summary = seat_rad_df.groupby('RAD')['SAPI_Unweighted'].mean().reset_index()
-    combined = weighted_summary.merge(unweighted_summary, on='RAD')
+with tab3:
+    st.header("Case Mix Analysis")
+    
+    # Filter case mix for selected radiologists
+    filtered_case_mix = case_mix[case_mix["RAD"].isin(selected_rad)]
+    
+    # Pie chart for Procedure vs Read
+    fig3 = go.Figure()
+    for rad in filtered_case_mix["RAD"]:
+        subset = filtered_case_mix[filtered_case_mix["RAD"] == rad]
+        fig3.add_trace(
+            go.Pie(
+                labels=["Procedure", "Read"],
+                values=[subset["Procedure"].iloc[0], subset["Read"].iloc[0]],
+                name=rad,
+                visible=True if rad == filtered_case_mix["RAD"].iloc[0] else False,
+            )
+        )
+    
+    # Add dropdown for radiologist selection
+    fig3.update_layout(
+        updatemenus=[
+            dict(
+                buttons=[
+                    dict(
+                        label=rad,
+                        method="update",
+                        args=[{"visible": [r == rad for r in filtered_case_mix["RAD"]]}],
+                    )
+                    for rad in filtered_case_mix["RAD"]
+                ],
+                direction="down",
+                showactive=True,
+            )
+        ],
+        title="Procedure vs. Read Case Mix by Radiologist",
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    # Display raw data
+    st.subheader("Raw Data")
+    st.dataframe(filtered_case_mix)
 
-    return seat_section, seat_rad_df, combined
-
-# --- App Setup ---
-st.set_page_config(page_title="CY24 Mammo SAPI Dashboard", layout="wide")
-
-# Display the logo
-st.image("milv.png", use_column_width=False, width=500)
-
-st.title("📊 CY24 Seat-Adjusted Performance Index Dashboard")
-
-st.markdown("""
-This dashboard evaluates radiologist performance using the **Seat-Adjusted Performance Index (SAPI)**:
-- **Unweighted SAPI**: Average % above/below benchmark per seat (equal weight)
-- **Weighted SAPI**: Average weighted by number of shifts per seat (total contribution)
-Benchmarks are based on 125% of seat averages to reflect the 75th percentile.
+# Instructions for deployment
+st.sidebar.markdown("""
+### Deployment Instructions
+1. Push this file (`app.py`) and `CY24 Mammo.xlsx` to your GitHub repo: `gibsona83/Mammo`.
+2. Create a `requirements.txt` with:
+```
+streamlit
+pandas
+plotly
+openpyxl
+```
+3. Deploy to Streamlit Community Cloud:
+   - Connect your GitHub repo.
+   - Select `app.py` as the main file.
+   - Ensure the Excel file is in the repo root.
 """)
-
-# --- Load and Process Data ---
-data_path = Path("CY24 Mammo.xlsx")  # In main directory
-hd_df, data_df = load_data(data_path)
-seat_section, seat_rad_df, combined = process_data(hd_df, data_df)
-
-# --- Display Dashboard ---
-st.subheader("📋 SAPI Leaderboard")
-st.dataframe(
-    combined.sort_values('SAPI_Weighted', ascending=False).round(2),
-    use_container_width=True,
-    height=300
-)
-
-st.subheader("🪑 Seat-Level Breakdown")
-st.dataframe(
-    seat_rad_df[['RAD', 'SEAT', 'Norm_HD_Avg', 'Benchmark', 'SAPI_Unweighted', 'Shifts']].round(2),
-    use_container_width=True,
-    height=400
-)
-
-st.subheader("📈 Benchmark Reference Table")
-st.dataframe(
-    seat_section.round(2),
-    use_container_width=True,
-    height=200
-)
-
-st.markdown("---")
-st.markdown("Developed for executive reporting. For questions, contact agibson@milvrad.com")
