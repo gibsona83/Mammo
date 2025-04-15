@@ -5,25 +5,24 @@ import os
 # --- Page Config ---
 st.set_page_config(page_title="CY24 Mammo SAPI Dashboard", layout="wide")
 
-# --- MILV Logo ---
+# --- MILV Branding ---
 st.image("milv.png", width=200)
 
-# --- Header ---
 st.markdown("""
 # **CY24 Seat-Adjusted Performance Index Dashboard**
 _Evaluating radiologist productivity relative to seat-specific expectations._
 """)
 
-# --- Custom Style ---
+# --- Style ---
 st.markdown("""
 <style>
-    h1, h2, h3 {
-        color: #003d5c;
-    }
-    .stDataFrame th {
-        background-color: #e6f2f7 !important;
-        color: #003d5c;
-    }
+h1, h2, h3 {
+    color: #003d5c;
+}
+.stDataFrame th {
+    background-color: #e6f2f7 !important;
+    color: #003d5c;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -33,35 +32,45 @@ if not os.path.exists(file_path):
     st.error("CY24Mammo.xlsx not found. Please upload it to the root of your GitHub repo.")
     st.stop()
 
+try:
+    xls = pd.ExcelFile(file_path)
+except ValueError:
+    st.error("CY24Mammo.xlsx is not a valid Excel file. Please re-upload a correct .xlsx file.")
+    st.stop()
+
 # Load sheets
-xls = pd.ExcelFile(file_path)
 rad_overall = pd.read_excel(xls, sheet_name="Radiologist_Overall")
 seat_overall = pd.read_excel(xls, sheet_name="Seat_Overall")
 seat_rad_df = pd.read_excel(xls, sheet_name="Seat_Rad_Breakdown")
 sapi_df = pd.read_excel(xls, sheet_name="SAPI_Summary")
 
-# Normalize strings
+# --- Normalize Strings (strip + upper for safe merging/filtering) ---
 for df in [seat_rad_df, sapi_df, seat_overall]:
     if 'RAD' in df.columns:
         df['RAD'] = df['RAD'].astype(str).str.upper().str.strip()
     if 'SEAT' in df.columns:
         df['SEAT'] = df['SEAT'].astype(str).str.upper().str.strip()
 
+# Also normalize for filters
+seat_rad_df['SEAT'] = seat_rad_df['SEAT'].str.upper().str.strip()
+seat_rad_df['RAD'] = seat_rad_df['RAD'].str.upper().str.strip()
+
 # --- Sidebar Filters ---
 st.sidebar.header("🔍 Filter Dashboard")
-rad_options = sorted(seat_rad_df['RAD'].unique())
-seat_options = sorted(seat_rad_df['SEAT'].unique())
 
-selected_rads = st.sidebar.multiselect("Select Radiologist(s):", rad_options, default=rad_options)
-selected_seats = st.sidebar.multiselect("Select Seat(s):", seat_options, default=seat_options)
+all_rads = sorted(seat_rad_df['RAD'].unique())
+all_seats = sorted(seat_rad_df['SEAT'].unique())
 
-# --- Filtered Data ---
+selected_rads = st.sidebar.multiselect("Radiologist(s):", all_rads, default=all_rads)
+selected_seats = st.sidebar.multiselect("Seat(s):", all_seats, default=all_seats)
+
+# --- Filtered Dataset ---
 filtered = seat_rad_df[
     seat_rad_df['RAD'].isin(selected_rads) &
     seat_rad_df['SEAT'].isin(selected_seats)
 ].copy()
 
-# Fill missing values
+# Fill NAs
 for col in ['Benchmark_75th', 'SAPI_Unweighted', 'Weighted_SAPI']:
     if col in filtered.columns:
         filtered[col] = filtered[col].fillna(0)
@@ -71,7 +80,7 @@ for col in ['SAPI_Weighted', 'SAPI_Unweighted']:
 
 # --- 📋 SAPI Leaderboard ---
 st.subheader("📋 SAPI Leaderboard")
-st.caption("Comparison of radiologist performance vs. 75th percentile benchmarks.")
+st.caption("Comparison of radiologist performance vs. 75th percentile seat benchmarks.")
 leaderboard = sapi_df[sapi_df['RAD'].isin(selected_rads)].sort_values('SAPI_Weighted', ascending=False).round(2)
 st.dataframe(leaderboard, use_container_width=True)
 
