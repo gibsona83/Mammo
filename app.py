@@ -3,6 +3,38 @@ import pandas as pd
 import os
 from pathlib import Path
 
+# Inject custom CSS for color scheme alignment
+st.markdown("""
+<style>
+    body {
+        background-color: #1C2526;
+        color: #FFFFFF;
+    }
+    .stApp {
+        background-color: #1C2526;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #FFFFFF;
+        font-family: 'Arial', sans-serif;
+    }
+    .stMarkdown p {
+        color: #D3D3D3;
+    }
+    .stDataFrame div {
+        background-color: #2B4A5D;
+        color: #FFFFFF;
+        border: 1px solid #FFFFFF;
+    }
+    .stDataFrame div:hover {
+        background-color: #3A5F73;
+    }
+    /* Style for the divider */
+    hr {
+        border-top: 1px solid #FFFFFF;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Cache data loading to prevent repeated file reads
 @st.cache_data
 def load_data(file_path):
@@ -10,7 +42,7 @@ def load_data(file_path):
         xls = pd.ExcelFile(file_path)
         return pd.read_excel(xls, sheet_name='HD Conversions'), pd.read_excel(xls, sheet_name='Data')
     except FileNotFoundError:
-        st.error("CY24 Mammo.xlsx not found in 'data' folder.")
+        st.error("CY24 Mammo.xlsx not found in the main repository folder.")
         st.stop()
 
 # Cache data processing to avoid redundant computations
@@ -66,6 +98,10 @@ def process_data(hd_df, data_df):
 
 # --- App Setup ---
 st.set_page_config(page_title="CY24 Mammo SAPI Dashboard", layout="wide")
+
+# Display the logo
+st.image("milv.png", use_column_width=False, width=500)
+
 st.title("📊 CY24 Seat-Adjusted Performance Index Dashboard")
 
 st.markdown("""
@@ -76,7 +112,7 @@ Benchmarks are based on 125% of seat averages to reflect the 75th percentile.
 """)
 
 # --- Load and Process Data ---
-data_path = Path("data") / "CY24 Mammo.xlsx"
+data_path = Path("CY24 Mammo.xlsx")  # In main directory
 hd_df, data_df = load_data(data_path)
 seat_section, seat_rad_df, combined = process_data(hd_df, data_df)
 
@@ -85,7 +121,7 @@ st.subheader("📋 SAPI Leaderboard")
 st.dataframe(
     combined.sort_values('SAPI_Weighted', ascending=False).round(2),
     use_container_width=True,
-    height=300  # Set fixed height for better layout
+    height=300
 )
 
 st.subheader("🪑 Seat-Level Breakdown")
@@ -103,4 +139,4 @@ st.dataframe(
 )
 
 st.markdown("---")
-st.markdown("Developed for executive reporting. For questions, contact agibson@milvrad.com](https://github.com/gibsona83/Mammo)")
+st.markdown("Developed for executive reporting. For questions, contact agibson@milvrad.com")
