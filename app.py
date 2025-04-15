@@ -70,4 +70,5 @@ st.markdown("""
 📊 **Weighted SAPI** = weighted by # of shifts per seat
 
 🎯 Developed for executive reporting by Medical Imaging of Lehigh Valley.
-For questions, contact agibson@milvrad.com
+For questions, contact [@gibsona83](https://github.com/gibsona83/Mammo)
+""")
