@@ -39,9 +39,10 @@ seats_df = pd.read_excel(xls, sheet_name="Seat_Overall")
 detail_df = pd.read_excel(xls, sheet_name="Seat_Rad_Breakdown")
 sapi_df = pd.read_excel(xls, sheet_name="SAPI_Summary")
 
-# --- Normalize Strings for Clean Merging ---
+# --- Normalize text fields if columns exist ---
 for df in [detail_df, sapi_df, seats_df]:
-    df['RAD'] = df['RAD'].astype(str).str.strip().str.upper()
+    if 'RAD' in df.columns:
+        df['RAD'] = df['RAD'].astype(str).str.strip().str.upper()
     if 'SEAT' in df.columns:
         df['SEAT'] = df['SEAT'].astype(str).str.strip().str.upper()
 
