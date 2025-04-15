@@ -5,7 +5,7 @@ import os
 # --- Page Config ---
 st.set_page_config(page_title="CY24 Mammo SAPI Dashboard", layout="wide")
 
-# --- Branding: MILV Logo ---
+# --- MILV Logo ---
 st.image("milv.png", width=200)
 
 # --- Header ---
@@ -28,49 +28,50 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Load Excel File ---
-file_path = "CY24 Mammo Cleaned.xlsx"
+file_path = "CY24Mammo.xlsx"
 if not os.path.exists(file_path):
-    st.error("CY24 Mammo Cleaned.xlsx not found. Please upload to the main GitHub folder.")
+    st.error("CY24Mammo.xlsx not found. Please upload it to the root of your GitHub repo.")
     st.stop()
 
+# Load sheets
 xls = pd.ExcelFile(file_path)
-rads_df = pd.read_excel(xls, sheet_name="Radiologist_Overall")
-seats_df = pd.read_excel(xls, sheet_name="Seat_Overall")
-detail_df = pd.read_excel(xls, sheet_name="Seat_Rad_Breakdown")
+rad_overall = pd.read_excel(xls, sheet_name="Radiologist_Overall")
+seat_overall = pd.read_excel(xls, sheet_name="Seat_Overall")
+seat_rad_df = pd.read_excel(xls, sheet_name="Seat_Rad_Breakdown")
 sapi_df = pd.read_excel(xls, sheet_name="SAPI_Summary")
 
-# --- Normalize text fields if columns exist ---
-for df in [detail_df, sapi_df, seats_df]:
+# Normalize strings
+for df in [seat_rad_df, sapi_df, seat_overall]:
     if 'RAD' in df.columns:
-        df['RAD'] = df['RAD'].astype(str).str.strip().str.upper()
+        df['RAD'] = df['RAD'].astype(str).str.upper().str.strip()
     if 'SEAT' in df.columns:
-        df['SEAT'] = df['SEAT'].astype(str).str.strip().str.upper()
+        df['SEAT'] = df['SEAT'].astype(str).str.upper().str.strip()
 
 # --- Sidebar Filters ---
 st.sidebar.header("🔍 Filter Dashboard")
-
-rad_options = sorted(detail_df['RAD'].unique())
-seat_options = sorted(detail_df['SEAT'].unique())
+rad_options = sorted(seat_rad_df['RAD'].unique())
+seat_options = sorted(seat_rad_df['SEAT'].unique())
 
 selected_rads = st.sidebar.multiselect("Select Radiologist(s):", rad_options, default=rad_options)
 selected_seats = st.sidebar.multiselect("Select Seat(s):", seat_options, default=seat_options)
 
-# --- Filter Data ---
-filtered = detail_df[
-    detail_df['RAD'].isin(selected_rads) &
-    detail_df['SEAT'].isin(selected_seats)
+# --- Filtered Data ---
+filtered = seat_rad_df[
+    seat_rad_df['RAD'].isin(selected_rads) &
+    seat_rad_df['SEAT'].isin(selected_seats)
 ].copy()
 
-# --- Fill NAs to prevent blank display ---
-filtered['Benchmark_75th'] = filtered['Benchmark_75th'].fillna(0)
-filtered['SAPI_Unweighted'] = filtered['SAPI_Unweighted'].fillna(0)
-filtered['Weighted_SAPI'] = filtered['Weighted_SAPI'].fillna(0)
-sapi_df['SAPI_Weighted'] = sapi_df['SAPI_Weighted'].fillna(0)
-sapi_df['SAPI_Unweighted'] = sapi_df['SAPI_Unweighted'].fillna(0)
+# Fill missing values
+for col in ['Benchmark_75th', 'SAPI_Unweighted', 'Weighted_SAPI']:
+    if col in filtered.columns:
+        filtered[col] = filtered[col].fillna(0)
+for col in ['SAPI_Weighted', 'SAPI_Unweighted']:
+    if col in sapi_df.columns:
+        sapi_df[col] = sapi_df[col].fillna(0)
 
 # --- 📋 SAPI Leaderboard ---
 st.subheader("📋 SAPI Leaderboard")
-st.caption("Comparison of radiologist performance vs. 75th percentile seat benchmarks.")
+st.caption("Comparison of radiologist performance vs. 75th percentile benchmarks.")
 leaderboard = sapi_df[sapi_df['RAD'].isin(selected_rads)].sort_values('SAPI_Weighted', ascending=False).round(2)
 st.dataframe(leaderboard, use_container_width=True)
 
@@ -86,7 +87,7 @@ st.dataframe(
 st.subheader("📈 Seat Benchmark Reference")
 st.caption("Benchmarks set at 125% of seat averages (75th percentile proxy).")
 st.dataframe(
-    seats_df[['SEAT', 'Seat_Norm_HD_Avg', 'Benchmark_75th']].round(2).sort_values(by='SEAT'),
+    seat_overall[['SEAT', 'Seat_Norm_HD_Avg', 'Benchmark_75th']].sort_values('SEAT').round(2),
     use_container_width=True
 )
 
@@ -95,7 +96,7 @@ st.markdown("---")
 st.markdown("""
 **SAPI Definitions**  
 📊 **Unweighted SAPI** = average % above/below benchmark across seats  
-📈 **Weighted SAPI** = weighted by number of shifts at each seat  
+📈 **Weighted SAPI** = weighted by number of shifts per seat  
 
 📘 _Dashboard developed for executive review by_ **Medical Imaging of Lehigh Valley, P.C.**  
 Questions? Contact [@gibsona83](https://github.com/gibsona83/Mammo)
