@@ -16,9 +16,9 @@ Benchmarks are based on 125% of seat averages to reflect the 75th percentile.
 """)
 
 # --- Load Data from File ---
-data_path = os.path.join("data", "CY24 Mammo.xlsx")
+data_path = "CY24 Mammo.xlsx"
 if not os.path.exists(data_path):
-    st.error("CY24 Mammo.xlsx not found. Please place it in the 'data' folder of the GitHub repository.")
+    st.error("CY24 Mammo.xlsx not found. Please place it in the main folder of the GitHub repository.")
     st.stop()
 
 xls = pd.ExcelFile(data_path)
