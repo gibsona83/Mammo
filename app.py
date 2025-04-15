@@ -2,87 +2,72 @@ import streamlit as st
 import pandas as pd
 import os
 
-# --- App Title & Description ---
+# --- App Setup ---
 st.set_page_config(page_title="CY24 Mammo SAPI Dashboard", layout="wide")
-st.title("📊 CY24 Seat-Adjusted Performance Index Dashboard")
 
+# --- Branding ---
+st.image("milv.png", width=180)
 st.markdown("""
-This dashboard evaluates radiologist performance using the **Seat-Adjusted Performance Index (SAPI)**:
-
-- **Unweighted SAPI**: Average % above/below benchmark per seat (equal weight)
-- **Weighted SAPI**: Average weighted by number of shifts per seat (total contribution)
-
-Benchmarks are based on 125% of seat averages to reflect the 75th percentile.
+### **CY24 Seat-Adjusted Performance Index Dashboard**
+Evaluating radiologist productivity relative to seat-specific expectations
 """)
 
-# --- Load Data from File ---
-data_path = "CY24 Mammo.xlsx"
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1rem;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: #003d5c;
+    }
+    .stDataFrame th {
+        background-color: #e6f2f7 !important;
+        color: #003d5c;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Load Cleaned Excel File ---
+data_path = "CY24 Mammo Cleaned.xlsx"
 if not os.path.exists(data_path):
-    st.error("CY24 Mammo.xlsx not found. Please place it in the main folder of the GitHub repository.")
+    st.error("CY24 Mammo Cleaned.xlsx not found. Please place it in the main folder of the GitHub repository.")
     st.stop()
 
 xls = pd.ExcelFile(data_path)
-hd_df = pd.read_excel(xls, sheet_name='HD Conversions')
-data_df = pd.read_excel(xls, sheet_name='Data')
+rads_df = pd.read_excel(xls, sheet_name="Radiologist_Overall")
+seats_df = pd.read_excel(xls, sheet_name="Seat_Overall")
+detail_df = pd.read_excel(xls, sheet_name="Seat_Rad_Breakdown")
+sapi_df = pd.read_excel(xls, sheet_name="SAPI_Summary")
 
-# --- Extract Benchmark Table ---
-seat_section = hd_df.iloc[1:7, [4, 5]]
-seat_section.columns = ['SEAT', 'Seat_Norm_HD_Avg']
-seat_section = seat_section.dropna().copy()
-seat_section['Benchmark'] = seat_section['Seat_Norm_HD_Avg'] * 1.25
+# --- Sidebar Filters ---
+st.sidebar.header("🔍 Filters")
+rad_options = detail_df['RAD'].unique().tolist()
+seat_options = detail_df['SEAT'].unique().tolist()
+selected_rads = st.sidebar.multiselect("Select Radiologist(s):", rad_options, default=rad_options)
+selected_seats = st.sidebar.multiselect("Select Seat(s):", seat_options, default=seat_options)
 
-# --- Extract Radiologist Normalized HD Averages ---
-rad_section = hd_df.iloc[1:12, [0, 1]]
-rad_section.columns = ['RAD', 'Norm_HD_Avg']
-rad_section = rad_section.dropna().copy()
+# --- Filtered Dataset ---
+filtered = detail_df[detail_df['RAD'].isin(selected_rads) & detail_df['SEAT'].isin(selected_seats)]
 
-# --- Extract Per-Seat Radiologist Performance ---
-seat_rads = []
-seat_names = seat_section['SEAT'].tolist()
-for seat in seat_names:
-    seat_data = hd_df[hd_df.iloc[:, 0] == seat].iloc[:, :2]
-    if not seat_data.empty:
-        for i in range(1, 10):
-            rad = hd_df.iloc[hd_df[hd_df.columns[0]] == seat].index[0] + i
-            val = hd_df.iloc[rad, 0:2].tolist()
-            if pd.notna(val[0]) and pd.notna(val[1]):
-                seat_rads.append([val[0], seat, val[1]])
-            else:
-                break
-seat_rad_df = pd.DataFrame(seat_rads, columns=['RAD', 'SEAT', 'Norm_HD_Avg'])
-
-# --- Merge with Benchmarks ---
-seat_rad_df = seat_rad_df.merge(seat_section, on='SEAT', how='left')
-seat_rad_df['SAPI_Unweighted'] = seat_rad_df['Norm_HD_Avg'] / seat_rad_df['Benchmark'] * 100
-
-# --- Shift Counts for Weighted SAPI ---
-shifts = data_df.groupby(['Finalizing Provider', 'Location']).size().reset_index(name='Shifts')
-shifts.columns = ['RAD', 'SEAT', 'Shifts']
-seat_rad_df = seat_rad_df.merge(shifts, on=['RAD', 'SEAT'], how='left')
-seat_rad_df['Shifts'] = seat_rad_df['Shifts'].fillna(1)
-
-# --- Weighted SAPI Calculation ---
-weighted = seat_rad_df.copy()
-weighted['Weighted_SAPI'] = weighted['SAPI_Unweighted'] * weighted['Shifts']
-weighted_summary = weighted.groupby('RAD').agg({
-    'Weighted_SAPI': 'sum',
-    'Shifts': 'sum'
-}).reset_index()
-weighted_summary['SAPI_Weighted'] = weighted_summary['Weighted_SAPI'] / weighted_summary['Shifts']
-
-# --- Combine Unweighted SAPI ---
-unweighted_summary = seat_rad_df.groupby('RAD')['SAPI_Unweighted'].mean().reset_index()
-combined = weighted_summary.merge(unweighted_summary, on='RAD')
-
-# --- Display Dashboard ---
+# --- SAPI Leaderboard ---
 st.subheader("📋 SAPI Leaderboard")
-st.dataframe(combined.sort_values('SAPI_Weighted', ascending=False).round(2), use_container_width=True)
+st.caption("Compares each radiologist’s performance vs. 75th percentile benchmark for the seats they worked.")
+st.dataframe(sapi_df.sort_values("SAPI_Weighted", ascending=False).round(2), use_container_width=True)
 
-st.subheader("🪑 Seat-Level Breakdown")
-st.dataframe(seat_rad_df[['RAD', 'SEAT', 'Norm_HD_Avg', 'Benchmark', 'SAPI_Unweighted', 'Shifts']].round(2), use_container_width=True)
+# --- Seat-Level Details ---
+st.subheader("🪑 Seat-Level Performance")
+st.caption("Normalized HD Avg vs. seat benchmark, including shift count and weighted SAPI.")
+st.dataframe(filtered[['RAD', 'SEAT', 'Norm_HD_Avg', 'Benchmark_75th', 'SAPI_Unweighted', 'Shifts', 'Weighted_SAPI']].round(2), use_container_width=True)
 
-st.subheader("📈 Benchmark Reference Table")
-st.dataframe(seat_section.round(2), use_container_width=True)
+# --- Benchmark Overview ---
+st.subheader("📈 Benchmark Reference")
+st.caption("125% of seat average = 75th percentile benchmark")
+st.dataframe(seats_df[['SEAT', 'Seat_Norm_HD_Avg', 'Benchmark_75th']].round(2), use_container_width=True)
 
 st.markdown("---")
-st.markdown("Developed for executive reporting. For questions, contact [@gibsona83](https://github.com/gibsona83/Mammo)")
+st.markdown("""
+💡 **Unweighted SAPI** = average across seats 
+📊 **Weighted SAPI** = weighted by # of shifts per seat
+
+🎯 Developed for executive reporting by Medical Imaging of Lehigh Valley.
+For questions, contact agibson@milvrad.com
